@@ -18,7 +18,7 @@ public class TitleScene : Scene
     public TitleScene() =>
         scene_id = 0;
 
-    public void Init(GraphicsDeviceManager gdm) =>
+    public void Init() =>
         text_pos = new Vector2(TDS._winWidth / 2.667f, TDS._winHeight / 1.2f);
 
     public void LoadContent(ContentManager c)
@@ -26,7 +26,12 @@ public class TitleScene : Scene
         background = c.Load<Texture2D>("menuBackground");
         font = c.Load<SpriteFont>("bfont");
     }
-    
+
+    public void UnloadContent()
+    {
+        background.Dispose();
+    }
+
     public void Update()
     {
         if (Input.KeyPressed(Keys.Escape)) TDS.Close();
@@ -48,7 +53,4 @@ public class TitleScene : Scene
             0.5f
         );
     }
-
-    public void CleanUp() =>
-        background.Dispose();
 }

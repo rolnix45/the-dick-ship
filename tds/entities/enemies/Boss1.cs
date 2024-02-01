@@ -8,26 +8,25 @@ using Microsoft.Xna.Framework.Graphics;
 
 namespace ahn.entities.enemies;
 
-internal sealed class Boss1 : Enemy
+internal sealed class Boss1 : Entity
 {
     public override Texture2D texture { get; protected set; }
     public override Vector2 position { get; protected set; }
-    public override int scale { get; }
-    protected override SoundEffect hit_sound { get; set; }
-    protected override SoundEffect defl_hit_sound { get; set; }
+    private SoundEffect hit_sound { get; set; }
+    private SoundEffect defl_hit_sound { get; set; }
     private SoundEffect death_sound;
     private SoundEffect shoot_sound;
     private const int speed = 350;
-    private const int firerate = 1000;
+    private const int firerate = 1500;
     private float next_time_to_fire;
     private readonly Player _player;
     private Texture2D bullet_texture;
+    private static bool is_protected;
 
     public Boss1(Player p)
     {
         _player = p;
         scale = 256;
-        position = new Vector2();
     }
 
     public void LoadContent(ContentManager c)
@@ -44,14 +43,32 @@ internal sealed class Boss1 : Enemy
     {
         health = 16;
         position = new Vector2(TDS._winWidth + 25, TDS._winHeight / 2 - scale / 2);
-        EnemyHandler.Enemies.Add(this);
+        EntityHandler.Entities.Add(this);
+    }
+
+    protected override void Damage()
+    {
+        if (is_protected)
+        {
+            defl_hit_sound.Play();
+            return;
+        }
+        hit_sound.Play();
+        health--;
+    }
+
+    protected override void Kill()
+    {
+        death_sound.Play();
+        Player.score += 100;
+        EntityHandler.Entities.Remove(this);
     }
 
     private void Attack()
     {
         if (TDS.g_time.TotalGameTime.TotalMilliseconds < next_time_to_fire) return;
         next_time_to_fire = (float)TDS.g_time.TotalGameTime.TotalMilliseconds + firerate;
-        Random rnd = new Random();
+        var rnd = new Random();
         var attack_type = rnd.Next(0, 3);
         EnemyBullet bullet;
         switch (attack_type)
@@ -62,7 +79,7 @@ internal sealed class Boss1 : Enemy
                     shoot_sound.Play();
                     bullet = new EnemyBullet(bullet_texture, "boss1");
                     bullet.Create(new Vector2(position.X, position.Y + scale / 2f), _player, i);
-                    EnemyHandler.EnemyBullets.Add(bullet);
+                    EntityHandler.EnemyBullets.Add(bullet);
                 }
                 break;
             case 1: // LOTS OF SHITS
@@ -74,7 +91,7 @@ internal sealed class Boss1 : Enemy
                         shoot_sound.Play();
                         bullet = new EnemyBullet(bullet_texture, "boss1");
                         bullet.Create(new Vector2(position.X, position.Y + scale / 2f), _player);
-                        EnemyHandler.EnemyBullets.Add(bullet);
+                        EntityHandler.EnemyBullets.Add(bullet);
                         await Task.Delay(50);
                     }
                 }
@@ -86,25 +103,17 @@ internal sealed class Boss1 : Enemy
                     if (i % 8 == 0) shoot_sound.Play();
                     bullet = new EnemyBullet(bullet_texture, "boss1");
                     bullet.Create(new Vector2(position.X, position.Y + scale / 2f), _player, i);
-                    EnemyHandler.EnemyBullets.Add(bullet);
+                    EntityHandler.EnemyBullets.Add(bullet);
                 }
                 break;
         }
     }
 
-    public override void Update(Player p, Enemy e)
+    protected override void AliveUpdate(Player p, Entity e)
     {
-        base.Update(p, e);
-        if (health <= 0)
-        {
-            death_sound.Play();
-            Player.score += 100;
-            EnemyHandler.Enemies.Remove(this);
-            return;
-        }
+        base.AliveUpdate(p, e);
         if (position.X > TDS._winWidth / 1.5f)
         {
-            health = 16;
             is_protected = true;
             position = new Vector2(position.X - speed * TDS.frame_delta, position.Y);
             return;
@@ -113,7 +122,7 @@ internal sealed class Boss1 : Enemy
         Attack();
     }
 
-    public void SCleanup()
+    public void Cleanup()
     {
         death_sound.Dispose();
         shoot_sound.Dispose();

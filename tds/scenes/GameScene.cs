@@ -1,13 +1,16 @@
-﻿using System.Linq;
+﻿using System.Collections.Generic;
+using System.Linq;
 using ahn.entities;
 using ahn.entities.enemies;
 using ahn.io;
+using ahn.particles;
+using ahn.stages;
 using log4net;
 using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Audio;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using MonoGame.Extended.Content;
 
 namespace ahn.scenes;
 
@@ -22,51 +25,88 @@ public class GameScene : Scene
 {
     private static readonly ILog _log =
         LogManager.GetLogger(typeof(GameScene));
-    
     public static State _state { get; private set; }
     public int scene_id { get; }
-    private Player _player { get; set; }
-    private Boss1 _boss1 { get; set; }
-    private Crate _crate { get; set; }
-    private EnemyHandler _enemy_handler;
-    private Texture2D background;
+    
+    private static readonly Dictionary<Stages, Stage> _stages = new();
+    private static Stages current_stage { get; set; }
+    public static Stages next_stage { get; set; }
+    private readonly DickSpace dick_space = new();
+    private readonly KwateraJaspera kwatera_jaspera = new();
+    private readonly Posnania posnania = new();
+    private readonly BetweenAnimation between_animation = new();
+    
+    private Player player { get; set; }
+    private EntityHandler entityHandler;
+    private ContentManager _contentManager;
+    
     private SpriteFont font;
     private SpriteFont bfont;
-    private bool show_debug_info = true;
-    private Texture2D imp_texture;
-    private Texture2D imp_bull_texture;
-    private SoundEffect e_hit_sound;
-    private SoundEffect e_def_hit_sound;
+    private Texture2D rect;
+    
     private bool death_sound_played;
-    private bool boss1_spawned;
+    private bool show_debug_info = true;
     public static bool damaged { get; set; }
     public static bool draw_hitboxes { get; private set; }
+    public static bool anim_end { get; set; }
 
     public GameScene() =>
         scene_id = 1;
 
-    public void Init(GraphicsDeviceManager gdm)
+    public void Init()
     {
+        _stages.Add(Stages.between, between_animation);
+        _stages.Add(Stages.dick_space, dick_space);
+        _stages.Add(Stages.kwatera_jaspera, kwatera_jaspera);
+        _stages.Add(Stages.posnania, posnania);
         _state = State.Running;
-        _player = new Player();
-        _enemy_handler = new EnemyHandler();
-        _player.Init();
-        _boss1 = new Boss1(_player);
-        _crate = new Crate();
+        player = new Player();
+        entityHandler = new EntityHandler();
+        player.Init();
+        current_stage = Stages.dick_space;
+        next_stage = current_stage;
+        _stages[current_stage].Init(player);
+        _stages[Stages.between].Init(player);
+        anim_end = false;
+    }
+    
+    private void ChangeStage(bool to_betw, Stages new_stage)
+    {
+        if (current_stage != Stages.between && to_betw)
+        {
+            entityHandler.KillAllEnemiesAndBullets();
+            _stages[Stages.between].Init(player);
+            _stages[Stages.between].LoadContent(_contentManager);
+            _stages[new_stage].Init(player);
+            _stages[new_stage].LoadContent(_contentManager);
+            between_animation.SetupNext(_stages[new_stage].background, _stages[current_stage].background, new_stage);
+            _log.Info("stage changed to " + Stages.between);
+        }
+        else
+        {
+            next_stage = new_stage;
+            current_stage = new_stage;
+            _log.Info("stage changed to " + new_stage);
+        }
     }
     
     public void LoadContent(ContentManager c)
     {
-        background = c.Load<Texture2D>("background");
+        _contentManager = c;
         font = c.Load<SpriteFont>("font");
         bfont = c.Load<SpriteFont>("bfont");
-        imp_texture = c.Load<Texture2D>("enemy1");
-        imp_bull_texture = c.Load<Texture2D>("enemy1Bullet");
-        e_hit_sound = c.Load<SoundEffect>("enemyHit");
-        e_def_hit_sound = c.Load<SoundEffect>("enemyHitProt");
-        _player.LoadContent(c);
-        _boss1.LoadContent(c);
-        _crate.LoadContent(c);
+        rect = new Texture2D(c.GetGraphicsDevice(), 1, 1);
+        rect.SetData(new []{Color.White});
+        player.LoadContent(c);
+        _stages[current_stage].LoadContent(c);
+    }
+
+    public void UnloadContent()
+    {
+        rect.Dispose();
+        player.Cleanup();
+        entityHandler.Cleanup();
+        _stages[current_stage].UnloadContent();
     }
 
     public static void DamagePlayer()
@@ -80,6 +120,8 @@ public class GameScene : Scene
 
     private void RunningEvents()
     {
+        TDS.clip_cursor = true;
+        TDS.show_cursor = false;
         if (Input.KeyPressed(Keys.F1))
         {
             DamagePlayer();
@@ -94,57 +136,74 @@ public class GameScene : Scene
         {
             draw_hitboxes = !draw_hitboxes;
         }
-        
+
         if (Input.KeyPressed(Keys.Escape))
         {
             _state = State.Paused;
         }
+
+        if (Input.KeyPressed(Keys.F4))
+        {
+            Player.lifes++;
+        }
+        
+        if (anim_end)
+        {
+            anim_end = false;
+            current_stage = next_stage;
+            ChangeStage(false, next_stage);
+        }
+
+        if (next_stage != current_stage)
+        {
+            ChangeStage(true, next_stage);
+            next_stage = Stages.between;
+            current_stage = Stages.between;
+        }
     }
 
-    private void UpdateEnemies()
+    private void UpdateEntities()
     {
-        foreach (var e in EnemyHandler.Enemies.ToList())
+        foreach (var e in EntityHandler.Entities.ToList())
         {
-            e.Update(_player, e);
+            e.Update(player, e);
         }
         damaged = false;
 
-        foreach (var b in EnemyHandler.EnemyBullets.ToList())
+        foreach (var b in EntityHandler.EnemyBullets.ToList().Where(b => b.tag is "boss1" or "imposter" or "twujstarynajebany"))
         {
-            switch (b.tag)
+            if (b.position.X > 0 && b.is_alive)
             {
-                case "boss1" or "imposter":
-                    if (b.position.X > 0 && b.is_alive)
-                    {
-                        var newpos = new Vector2(b.position.X + b.delta_x * TDS.frame_delta, b.position.Y + b.delta_y * TDS.frame_delta);
-                        b.position = newpos;
-                    }
-                    else
-                    {
-                        EnemyHandler.EnemyBullets.Remove(b);
-                    }
-                    break;
+                var newpos = new Vector2(b.position.X + b.delta_x * TDS.frame_delta,
+                    b.position.Y + b.delta_y * TDS.frame_delta);
+                b.position = newpos;
+            }
+            else
+            {
+                EntityHandler.EnemyBullets.Remove(b);
             }
         }
     }
 
     private void Restart()
     {
-        _enemy_handler.KillAllEnemiesAndBullets();
+        entityHandler.KillAllEnemiesAndBullets();
         death_sound_played = false;
-        boss1_spawned = false;
-        UpdateEnemies();
-        _player.Init();
+        UpdateEntities();
+        player.Init();
+        _stages[current_stage].Restart();
         _state = State.Running;
         _log.Info("restarted");
     }
     
     private void PausedEvents()
     {
+        TDS.clip_cursor = false;
+        TDS.show_cursor = true;
         if (_state == State.Dead && !death_sound_played)
         {
             death_sound_played = true;
-            _player.death_sound.Play();
+            player.death_sound.Play();
         }
         
         if (Input.KeyPressed(Keys.Back))
@@ -162,33 +221,6 @@ public class GameScene : Scene
             TDS.Close();
         }
     }
-
-    private float time_to_spawn_imp;
-    private float time_to_spawn_crate;
-    private const int spawn_rate = 500;
-    private void Spawn()
-    {
-        // IMPOSTER
-        if (TDS.g_time.TotalGameTime.TotalMilliseconds >= time_to_spawn_imp)
-        {
-            time_to_spawn_imp = (float)TDS.g_time.TotalGameTime.TotalMilliseconds + spawn_rate;
-            Imposter.Spawn(imp_texture, imp_bull_texture, e_hit_sound, e_def_hit_sound);
-        }
-
-        // BOSS1
-        if (Player.score >= 20 && !boss1_spawned)
-        {
-            boss1_spawned = true;
-            _boss1.Spawn();
-        }
-        
-        // CRATE
-        if (Player.score >= 20 && TDS.g_time.TotalGameTime.TotalMilliseconds >= time_to_spawn_crate && !EnemyHandler.Enemies.Contains(_boss1))
-        {
-            time_to_spawn_crate = (float)TDS.g_time.TotalGameTime.TotalMilliseconds + spawn_rate * 23;
-            _crate.Spawn(_crate.texture, _crate.geths());
-        } 
-    }
     
     public void Update()
     {
@@ -196,9 +228,10 @@ public class GameScene : Scene
         {
             case State.Running:
                 RunningEvents();
-                UpdateEnemies();
-                Spawn();
-                _player.Update();
+                UpdateEntities();
+                player.Update();
+                _stages[current_stage].Update();
+                ParticleSystem.UpdateParticles();
                 break;
             case State.Paused:
                 PausedEvents();
@@ -211,17 +244,17 @@ public class GameScene : Scene
 
     private void DebugInfo(SpriteBatch sb)
     {
-        var info = string.Format(
-            "DLT: {0:0.000}\nTIM: {1:0}\nPBC: {2}\nENM: {3}\nEBC: {4}\nPOS: {5:0} {6:0}\nDMG: {7}\nFIR: {8}", 
-            TDS.frame_delta,
-            TDS.g_time.TotalGameTime.TotalMilliseconds,
-            Player._bullets.Count,
-            EnemyHandler.Enemies.Count,
-            EnemyHandler.EnemyBullets.Count,
-            _player.position.X, _player.position.Y,
-            Player.damage,
-            Player.fire_rate
-        );
+        var info =
+            "DLT: " + TDS.frame_delta.ToString("0.000") +
+            "\nTIM: " + TDS.g_time.TotalGameTime.TotalMilliseconds.ToString("0") +
+            "\nPBC: " + Player._bullets.Count +
+            "\nENM: " + EntityHandler.Entities.Count +
+            "\nEBC: " + EntityHandler.EnemyBullets.Count +
+            "\nPOS: " + player.position.X.ToString("0") + " " + player.position.Y.ToString("0") +
+            "\nDMG: " + Player.damage +
+            "\nCUR: " + Player.cumrate +
+            "\nPAR: " + ParticleSystem.ParticlesList.Count +
+            "\nSTG: " + current_stage;
         sb.DrawString(
             font,
             info,
@@ -237,15 +270,17 @@ public class GameScene : Scene
 
     private void CommonDraw(SpriteBatch sb)
     {
+        if (_stages[current_stage] is BetweenAnimation) return;
         sb.Draw(
-            background,
+            _stages[current_stage].background,
             Vector2.Zero,
-            Color.White
+            _state != State.Dead ? Color.White : Color.Red
         );
-        _enemy_handler.Draw(sb);
-        _player.Draw(sb);
+        ParticleSystem.DrawParticles(sb);
+        entityHandler.Draw(sb);
+        player.Draw(sb);
         var info = $"LIFES: {Player.lifes}\n" +
-                       $"SCORE: {Player.score}";
+                   $"SCORE: {Player.score}";
         sb.DrawString(
             font,
             info,
@@ -268,11 +303,21 @@ public class GameScene : Scene
             new Vector2(TDS._winWidth - 400, 5),
             Color.White
         );
+        sb.Draw(
+            rect,
+            new Rectangle(TDS._winWidth / 2 - 175, TDS._winHeight / 2 - 87, 350, 175),
+            new Rectangle(0, 0, 1, 1),
+            Color.Black,
+            0f,
+            Vector2.Zero,
+            SpriteEffects.None,
+            0.9f
+        );
         sb.DrawString(
             bfont,
             "DEAD",
             new Vector2(TDS._winWidth / 2f, TDS._winHeight / 2f),
-            Color.White,
+            Color.Crimson,
             0f,
             bfont.MeasureString("DEAD") / 2f,
             1f,
@@ -289,14 +334,23 @@ public class GameScene : Scene
             new Vector2(TDS._winWidth - 400, 5),
             Color.White
         );
-        const string text = "chuj";
+        sb.Draw(
+            rect,
+            new Rectangle(TDS._winWidth / 2 - 175, TDS._winHeight / 2 - 87, 350, 175),
+            new Rectangle(0, 0, 1, 1),
+            Color.Navy,
+            0f,
+            Vector2.Zero,
+            SpriteEffects.None,
+            0.9f
+        );
         sb.DrawString(
             bfont,
-            text,
+            "PAUSED",
             new Vector2(TDS._winWidth / 2f, TDS._winHeight / 2f),
             Color.White,
             0f,
-            bfont.MeasureString(text) / 2f,
+            bfont.MeasureString("PAUSED") / 2f,
             1f,
             SpriteEffects.None,
             1f
@@ -309,6 +363,7 @@ public class GameScene : Scene
         {
             case State.Running:
                 CommonDraw(sb);
+                _stages[current_stage].Draw(sb);
                 break;
             case State.Paused:
                 CommonDraw(sb);
@@ -319,15 +374,5 @@ public class GameScene : Scene
                 DeadDraw(sb);
                 break;
         }
-    }
-
-    public void CleanUp()
-    {
-        _boss1.SCleanup();
-        _player.Cleanup();
-        _enemy_handler.Cleanup();
-        e_hit_sound.Dispose();
-        e_def_hit_sound.Dispose();
-        background.Dispose();
     }
 }

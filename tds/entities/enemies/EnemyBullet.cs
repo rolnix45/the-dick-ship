@@ -10,6 +10,7 @@ internal sealed class EnemyBullet : Bullet
     public override Vector2 position { get; set; }
     public readonly string tag;
     private const float bullet_velocity = 800;
+    public float angle { get; private set; }
 
     public EnemyBullet(Texture2D t, string tag)
     {
@@ -31,28 +32,30 @@ internal sealed class EnemyBullet : Bullet
     {
         var p_pos = p.position;
         position = new Vector2(pos.X, pos.Y);
-        var angle = CalculateAngle(
+        angle = CalculateAngle(
             p_pos.X + p.scale / 2f,
             p_pos.Y + p.scale / 2f,
             pos.X,
             pos.Y
         );
-        delta_x = 180 / MathF.PI * MathF.Cos(angle) * bullet_velocity * TDS.frame_delta;
-        delta_y = 180 / MathF.PI * MathF.Sin(angle) * bullet_velocity * TDS.frame_delta;
+        delta_x = 180f / MathF.PI * MathF.Cos(angle) * bullet_velocity * TDS.frame_delta;
+        delta_y = 180f / MathF.PI * MathF.Sin(angle) * bullet_velocity * TDS.frame_delta;
+        angle *= 180f / MathF.PI;
     }
 
     public void Create(Vector2 pos, Player p, float ang)
     {
         var player_pos = p.position;
         position = new Vector2(pos.X, pos.Y);
-        var angle = CalculateAngle(
+        angle = CalculateAngle(
             player_pos.X + p.scale / 2f,
             player_pos.Y + p.scale / 2f,
             pos.X,
             pos.Y
         );
-        var rad_ang = ang * MathF.PI / 180;
-        delta_x = 180 / MathF.PI * MathF.Cos(angle + rad_ang) * bullet_velocity * TDS.frame_delta;
-        delta_y = 180 / MathF.PI * MathF.Sin(angle + rad_ang) * bullet_velocity * TDS.frame_delta;
+        var rad_ang = ang * MathF.PI / 180f;
+        delta_x = 180f / MathF.PI * MathF.Cos(angle + rad_ang) * bullet_velocity * TDS.frame_delta;
+        delta_y = 180f / MathF.PI * MathF.Sin(angle + rad_ang) * bullet_velocity * TDS.frame_delta;
+        angle = rad_ang;
     }
 }

@@ -11,18 +11,18 @@ internal enum Type
 {
     life,
     firerate,
-    damage
+    damage,
+    double_shot,
+    shield
 }
 
-internal sealed class Crate : Enemy
+internal sealed class Crate : Entity
 {
     private Type _type { get; init; }
     public override Texture2D texture { get; protected set; }
     public override Vector2 position { get; protected set; }
-    public override int scale { get; }
     private const int speed = 500;
-    protected override SoundEffect hit_sound { get; set; }
-    protected override SoundEffect defl_hit_sound { get; set; }
+    public SoundEffect hit_sound { get; private set; }
 
     public Crate()
     {
@@ -42,20 +42,35 @@ internal sealed class Crate : Enemy
         while (true)
         {
             Type type;
-            var typer = rnd.Next(1, 4);
-            if (typer % 3 == 0)
+            var r = rnd.NextDouble();
+            switch (r)
             {
-                type = Type.life;
-            }
-            else if (typer % 2 == 0)
-            {
-                type = Type.firerate;
-                if (Player.firerate_max) continue;
-            }
-            else
-            {
-                type = Type.damage;
-                if (Player.damage_max) continue;
+                case <= 0.32:
+                    type = Type.life;
+                    break;
+                
+                case > 0.32 and <= 0.64 when Player.cumrate_max: continue;
+                case > 0.32 and <= 0.64:
+                    type = Type.firerate;
+                    break;
+                
+                case > 0.64 and <= 0.86 when Player.damage_max: continue;
+                case > 0.64 and <= 0.86:
+                    type = Type.damage;
+                    break;
+                
+                case > 0.86 and <= 0.90 when Player.double_shot: continue;
+                case > 0.86 and <= 0.90:
+                    type = Type.double_shot;
+                    break;
+                
+                case > 0.90 when Shield.shield_on: continue;
+                case > 0.90:
+                    type = Type.shield;
+                    break;
+                
+                default:
+                    continue;
             }
             return type;
         }
@@ -70,7 +85,7 @@ internal sealed class Crate : Enemy
             texture = t,
             hit_sound = hs
         };
-        EnemyHandler.Enemies.Add(c);
+        EntityHandler.Entities.Add(c);
     }
 
     private void LifeUpgrade()
@@ -80,14 +95,24 @@ internal sealed class Crate : Enemy
 
     private void FirerateUpgrade()
     {
-        if (Player.fire_rate <= 100) Player.firerate_max = true;
-        Player.fire_rate -= 65;
+        if (Player.cumrate <= 100) Player.cumrate_max = true;
+        Player.cumrate -= 65;
     }
 
     private void DamageUpgrade()
     {
         if (Player.damage >= 10) Player.damage_max = true;
         Player.damage++;
+    }
+
+    private void DoubleShotUpgrade()
+    {
+        Player.double_shot = true;
+    }
+
+    private void ShieldUpgrade()
+    {
+        Player.summon_shield = true;
     }
 
     private void Use()
@@ -103,22 +128,36 @@ internal sealed class Crate : Enemy
             case Type.damage:
                 DamageUpgrade();
                 break;
+            case Type.double_shot:
+                DoubleShotUpgrade();
+                break;
+            case Type.shield:
+                ShieldUpgrade();
+                break;
         }
     }
 
-    public SoundEffect geths()
+    protected override void Damage()
     {
-        return hit_sound;
+        hit_sound.Play();
+        health--;
     }
-    
-    public override void Update(Player player, Enemy enemy)
+
+    protected override void Kill()
     {
-        base.Update(player, enemy);
-        if (health <= 0)
-        {
-            Use();
-            EnemyHandler.Enemies.Remove(this);
-        }
+        Use();
+        EntityHandler.Entities.Remove(this);
+    }
+
+    protected override void AliveUpdate(Player player, Entity entity)
+    {
+        base.AliveUpdate(player, entity);
         position = new Vector2(position.X - speed * TDS.frame_delta, position.Y);
+    }
+
+    public void Cleanup()
+    {
+        texture.Dispose();
+        hit_sound.Dispose();
     }
 }
