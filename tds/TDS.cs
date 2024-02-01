@@ -116,7 +116,12 @@ public class TDS : Game
                       "F3 Show Hitboxes\n" +
                       "F4 Add Life\n" + 
                       "F5 Change Stage To Dick Space\n" +
-                      "F6 Change Stage To Kwatera Jaspera\n");
+                      "F6 Change Stage To Kwatera Jaspera\n" +
+                      "F7 Change Stage To Posnania\n" +
+                      "F9 Lower Cumrate\n" +
+                      "F10 Increase Damage\n" +
+                      "F11 Add Double Shot Upgrade\n" +
+                      "F12 Summon Shield\n");
         Console.ForegroundColor = ConsoleColor.White;
     }
 

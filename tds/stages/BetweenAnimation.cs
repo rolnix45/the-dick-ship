@@ -57,7 +57,7 @@ public class BetweenAnimation : Stage
     {
         font = c.Load<SpriteFont>("bfont");
     }
-    
+
     public void UnloadContent()
     { }
     public void Spawn()
@@ -69,7 +69,7 @@ public class BetweenAnimation : Stage
         _log.Fatal("trying to fix...");
         throw new Exception("restart between stages is bad");
     }
-    
+
     private void Tween()
     {
         if (player_to_center)

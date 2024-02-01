@@ -138,6 +138,26 @@ public sealed class Player
     public void Update()
     {
         if (changing_stage) return;
+        if (Input.KeyPressed(Keys.F9))
+        {
+            cumrate -= 75;
+            _log.Info("cumrate decreased by 75");
+        }
+        if (Input.KeyPressed(Keys.F10))
+        {
+            damage++;
+            _log.Info("damage increased by 1");
+        }
+        if (Input.KeyPressed(Keys.F11))
+        {
+            double_shot = true;
+            _log.Info("double shot given");
+        }
+        if (Input.KeyPressed(Keys.F12))
+        {
+            summon_shield = true;
+            _log.Info("shield given");
+        }
         if (summon_shield)
         {
             summon_shield = false;
